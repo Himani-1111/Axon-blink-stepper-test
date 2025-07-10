@@ -2,46 +2,47 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#define CHIPNAME "gpiochip0"
-#define STEP_PIN 22
-#define DIR_PIN 23
-#define STEPS 200
-#define STEP_DELAY 1000 // microseconds
+#define CHIP_NAME "/dev/gpiochip1"
+#define STEP_LINE_OFFSET 25  // PIN_18
+#define DIR_LINE_OFFSET 24   // PIN_17
 
-int main() {
+int main(void) {
     struct gpiod_chip *chip;
-    struct gpiod_line *step_line;
-    struct gpiod_line *dir_line;
+    struct gpiod_line *step, *dir;
 
-    chip = gpiod_chip_open_by_name(CHIPNAME);
+    chip = gpiod_chip_open(CHIP_NAME);
     if (!chip) {
-        perror("Open chip failed");
+        perror("Failed to open GPIO chip");
         return 1;
     }
 
-    step_line = gpiod_chip_get_line(chip, STEP_PIN);
-    dir_line = gpiod_chip_get_line(chip, DIR_PIN);
+    step = gpiod_chip_get_line(chip, STEP_LINE_OFFSET);
+    dir = gpiod_chip_get_line(chip, DIR_LINE_OFFSET);
 
-    if (!step_line || !dir_line) {
-        perror("Get lines failed");
+    if (!step || !dir) {
+        perror("Failed to get GPIO lines");
         return 1;
     }
 
-    if (gpiod_line_request_output(step_line, "step", 0) < 0 ||
-        gpiod_line_request_output(dir_line, "dir", 0) < 0) {
-        perror("Request lines as output failed");
+    if (gpiod_line_request_output(step, "stepper", 0) < 0 ||
+        gpiod_line_request_output(dir, "stepper", 0) < 0) {
+        perror("Failed to request lines as output");
         return 1;
     }
+// Set motor direction
+    gpiod_line_set_value(dir, 1);  // 1 = CW, 0 = CCW
 
-    gpiod_line_set_value(dir_line, 1); // Set direction
-
-    for (int i = 0; i < STEPS; i++) {
-        gpiod_line_set_value(step_line, 1);
-        usleep(STEP_DELAY);
-        gpiod_line_set_value(step_line, 0);
-        usleep(STEP_DELAY);
+    // Generate step pulses
+    for (int i = 0; i < 200; i++) {  // Adjust for full revs or microstepping
+        gpiod_line_set_value(step, 1);
+        usleep(1000);  // 1 ms HIGH
+        gpiod_line_set_value(step, 0);
+        usleep(1000);  // 1 ms LOW
     }
 
+    gpiod_line_release(step);
+    gpiod_line_release(dir);
     gpiod_chip_close(chip);
+
     return 0;
 }
